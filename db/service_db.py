@@ -26,7 +26,7 @@ async def get_all_from_table(table_name: str) -> list[Any]:
         query = select(table)
         result = await session.execute(query)
         elements = result.scalars().all()
-        return elements # type: ignore
+        return elements  # type: ignore
 
 
 async def insert_data(information: list[dict], table_name: str):

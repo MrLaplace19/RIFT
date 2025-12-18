@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Annotated
 from datetime import datetime
 
+
 class statuss(Enum):
     online = "online"
     offline = "offline"
@@ -12,6 +13,7 @@ class statuss(Enum):
 
 int_id = Annotated[int, mapped_column(primary_key=True)]
 date_create = Annotated[datetime, mapped_column(server_default=func.now())]
+
 
 class User(Base):
     __tablename__ = "user"
@@ -21,7 +23,10 @@ class User(Base):
     friend_list: Mapped[str] = mapped_column(nullable=True)
     status: Mapped[statuss]
     date: Mapped[date_create]
-    messages: Mapped[list["Message"]] = relationship(back_populates="author")#Узнать что это за связь
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="author"
+    )  # Узнать что это за связь
+
 
 class Message(Base):
     __tablename__ = "message"
@@ -29,7 +34,9 @@ class Message(Base):
     content: Mapped[str]
     created_at: Mapped[date_create]
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"))
-    author: Mapped["User"] = relationship(back_populates="messages")#Узнать что это за связь
+    author: Mapped["User"] = relationship(
+        back_populates="messages"
+    )  # Узнать что это за связь
 
 
 list_tables = {
