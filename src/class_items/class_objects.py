@@ -13,7 +13,7 @@ class user(BaseModel):
         if db_data is None:
             raise ValueError("Пустой массив")
         return cls(
-            db_data["username"],
+            db_data["username"], # type: ignore
             db_data["password"],
             db_data["list_friend"],
             db_data["status"],
