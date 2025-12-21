@@ -40,3 +40,16 @@ async def insert_data(information: list[dict], table_name: str):
             result = table(**info)
             session.add(result)
         await session.commit()
+
+
+async def get_user(login: str) -> Any | None :
+    user_table = list_tables.get("user")
+
+    if user_table is None:
+        return None
+    
+    async with session_factory() as session:
+        query = select(user_table).where(user_table.username == login)
+        result = await session.execute(query)
+        user = result.scalar_one_or_none()
+        return user

@@ -18,7 +18,7 @@ date_create = Annotated[datetime, mapped_column(server_default=func.now())]
 class User(Base):
     __tablename__ = "user"
     id: Mapped[int_id]
-    username: Mapped[str]
+    username: Mapped[str] = mapped_column(unique=True)
     password: Mapped[str]
     friend_list: Mapped[str] = mapped_column(nullable=True)
     status: Mapped[statuss]
