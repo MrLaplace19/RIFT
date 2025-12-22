@@ -1,10 +1,18 @@
-from .tables_class import list_tables
+from .tables_class import User, Message, list_tables
 from .base_class import Base
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from typing import Any
+import os
 
-URL = "postgresql+asyncpg://AD:123@127.0.0.1:5432/TEST"
+# Получаем данные для подключения к БД из переменных окружения
+DB_USER = os.getenv("POSTGRES_USER", "AD")
+DB_PASS = os.getenv("POSTGRES_PASSWORD", "123")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("POSTGRES_DB", "TEST")
+
+URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 engine = create_async_engine(URL)
 session_factory = async_sessionmaker(engine)
 
@@ -29,25 +37,56 @@ async def get_all_from_table(table_name: str) -> list[Any]:
         return elements  # type: ignore
 
 
-async def insert_data(information: list[dict], table_name: str):
-    table = list_tables.get(table_name)
+async def insert_data(information: Any, table_name: str):
+    user_table = list_tables.get(table_name)
 
-    if table is None:
-        raise ValueError(f"Таблица: {table_name} - отсутсвует")
+    if user_table is None:
+        raise ValueError(f"Таблица: {table_name} - отсутствует")
 
     async with session_factory() as session:
-        for info in information:
-            result = table(**info)
-            session.add(result)
-        await session.commit()
+        async with session.begin():
+            if table_name == "user":
+                if not isinstance(information, list):
+                    information = [information]
+
+                for info in information:
+                    result = user_table(**info)
+                    session.add(result)
+
+            elif table_name == "message":
+                payload = information.get("payload", {})
+                login = payload.get("username")
+                text = payload.get("text")
+
+                if not all([login, text]):
+                    raise ValueError("Отсутствуют обязательные поля")
+
+                # Получаем пользователя в той же сессии
+                from sqlalchemy import select
+                from sqlalchemy.orm import selectinload
+
+                stmt = select(User).where(User.username == login)
+                result = await session.execute(stmt)
+                user = result.scalar_one_or_none()
+
+                if not user:
+                    raise ValueError(f"Пользователь {login} не найден")
+
+                message_data = {
+                    "user_id": user.id,
+                    "content": text,
+                }
+
+                result = user_table(**message_data)
+                session.add(result)
 
 
-async def get_user(login: str) -> Any | None :
+async def get_user(login: str) -> Any | None:
     user_table = list_tables.get("user")
 
     if user_table is None:
         return None
-    
+
     async with session_factory() as session:
         query = select(user_table).where(user_table.username == login)
         result = await session.execute(query)

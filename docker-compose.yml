@@ -15,5 +15,20 @@ services:
       timeout: 5s
       retries: 5
 
+  server:
+    build: .
+    ports:
+      - "8765:8765"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: AD
+      POSTGRES_PASSWORD: 123
+      POSTGRES_DB: TEST
+      DB_HOST: postgres
+
 volumes:
   postgres_data:

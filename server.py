@@ -2,14 +2,19 @@ import asyncio
 from websockets.server import serve, WebSocketServerProtocol  # pyright: ignore[reportAttributeAccessIssue]
 import json
 from passlib.context import CryptContext
-from db.service_db import get_user
+from db.service_db import get_user, insert_data
 from db.tables_class import User
 
 ACTIVE_USERS = {}
-error_login_or_password = {"type": "auth_fail", "payload": {"error": "Неверный логин или пароль"}}
-error_first_non_auth = {"type": "auth_fail", "payload": {"error": "Сначала пройдите авторизацию"}}
-pwd_context = CryptContext(schemes=["argon2"], deprecated = "auto")
-
+error_login_or_password = {
+    "type": "auth_fail",
+    "payload": {"error": "Неверный логин или пароль"},
+}
+error_first_non_auth = {
+    "type": "auth_fail",
+    "payload": {"error": "Сначала пройдите авторизацию"},
+}
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 def verificated_pass(password: str, hash_password: str) -> bool:
@@ -25,9 +30,13 @@ async def handler(websocket: WebSocketServerProtocol, path: str):
 
         if data.get("type") == "auth":
             user = await get_user(data["payload"]["username"])
-            if user != None and verificated_pass(data["payload"]["password"], user.password):
+            if user != None and verificated_pass(
+                data["payload"]["password"], user.password
+            ):
                 ACTIVE_USERS[websocket] = user
-                print(f"Пользователь {user.username} подключился всего пользователей {len(ACTIVE_USERS)}")
+                print(
+                    f"Пользователь {user.username} подключился всего пользователей {len(ACTIVE_USERS)}"
+                )
                 await websocket.send(json.dumps({"type": "auth_success"}))
             else:
                 await websocket.send(json.dumps(error_login_or_password))
@@ -38,14 +47,18 @@ async def handler(websocket: WebSocketServerProtocol, path: str):
         async for message in websocket:
             data = json.loads(message)
             if data.get("type") == "message":
-                await broadcast(message=data["payload"]["text"], sender_websocket=websocket) 
+                await insert_data(data, "message")
+                await broadcast(
+                    message=data["payload"]["text"], sender_websocket=websocket
+                )
+
     except Exception as e:
         print("Ошибка", e)
-    
+
     finally:
         if websocket in ACTIVE_USERS:
             user = ACTIVE_USERS.pop(websocket)
-            print(f"Клиент {user.username} отключился осталось {len(ACTIVE_USERS)}")
+            print(f"Клиент {user.username} отключился осталось {len(ACTIVE_USERS)}") # type: ignore
 
 
 async def broadcast(message: str, sender_websocket: WebSocketServerProtocol):
@@ -53,14 +66,16 @@ async def broadcast(message: str, sender_websocket: WebSocketServerProtocol):
 
     if not sender_user:
         return
-    
-    message_to_send = json.dumps({
-        "type": "new_message",
-        "payload": {
-            "username": sender_user.username,
-            "text": message,
-        }   
-    })
+
+    message_to_send = json.dumps(
+        {
+            "type": "new_message",
+            "payload": {
+                "username": sender_user.username,
+                "text": message,
+            },
+        }
+    )
     tasks = []
 
     for client_websocket in ACTIVE_USERS:
@@ -72,8 +87,7 @@ async def broadcast(message: str, sender_websocket: WebSocketServerProtocol):
 
 
 async def main():
-    
-    host = "localhost"
+    host = "0.0.0.0"
     port = 8765
 
     async with serve(handler, host, port):

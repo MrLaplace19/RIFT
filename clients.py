@@ -3,6 +3,7 @@ import websockets
 import json
 import getpass
 
+
 async def receive_message(websocket):
     try:
         async for message in websocket:
@@ -17,7 +18,7 @@ async def receive_message(websocket):
         print("Соединение разорвано")
 
 
-async def send_message(websocket):
+async def send_message(websocket, username: str):
     while True:
         try:
             message = await asyncio.to_thread(input, "")
@@ -25,12 +26,9 @@ async def send_message(websocket):
                 print("Выход из чата")
                 break
 
-            message_to_send = json.dumps({
-                "type": "message",
-                "payload": {
-                    "text": message
-                }
-            })
+            message_to_send = json.dumps(
+                {"type": "message", "payload": {"text": message, "username": username}}
+            )
             await websocket.send(message_to_send)
         except (KeyboardInterrupt, EOFError):
             print("\nВыход из чата")
@@ -42,27 +40,29 @@ async def main():
 
     username = input("Введите свой логин ")
     password = getpass.getpass("Введите свой пароль ")
-    
-    auth_data = json.dumps({
-        "type": "auth",
-        "payload": {
-            "username": username,
-            "password": password,
+
+    auth_data = json.dumps(
+        {
+            "type": "auth",
+            "payload": {
+                "username": username,
+                "password": password,
+            },
         }
-    })
+    )
     try:
         async with websockets.connect(url) as websocket:
             print(f"Подключение к чату {url}")
-            
+
             await websocket.send(auth_data)
             server_str = await websocket.recv()
             response = json.loads(server_str)
 
             if response.get("type") == "auth_success":
-                print("Аутентификация успешна") 
+                print("Аутентификация успешна")
 
                 receive_task = asyncio.create_task(receive_message(websocket))
-                send_task = asyncio.create_task(send_message(websocket))
+                send_task = asyncio.create_task(send_message(websocket, username))
 
                 done, pending = await asyncio.wait(
                     [receive_task, send_task],
@@ -70,10 +70,12 @@ async def main():
                 )
                 for task in pending:
                     task.cancel()
-            
+
             else:
-                error_message = response.get("payload", {}).get("error", "Неверный логин или пароль")
-                print("Не удалось войти")
+                error_message = response.get("payload", {}).get(
+                    "error", "Неверный логин или пароль"
+                )
+                print("Не удалось войти: ", error_message)
                 return
     except ConnectionRefusedError:
         print("Не удалось подключиться")
