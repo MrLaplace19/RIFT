@@ -1,27 +1,17 @@
 import asyncio
-from websockets.server import serve, WebSocketServerProtocol  # pyright: ignore[reportAttributeAccessIssue]
+from websockets.server import serve, WebSocketServerProtocol
+from websockets.exceptions import ConnectionClosed
 import json
 from passlib.context import CryptContext
+#---------------------------------------------
 from db.service_db import get_user, insert_data
-from db.tables_class import User
+from db.tables_class import User, statuss
+from erorrs_messages.erorrs import error_user_exists, register_success, error_user_offline, error_login_or_password, error_first_non_auth
 
 ACTIVE_USERS = {}
 WEBSOCKET_TO_USER = {}
 USER_TO_WEBSOCKET = {}
-error_login_or_password = {
-    "type": "auth_fail",
-    "payload": {"error": "Неверный логин или пароль"},
-}
-error_first_non_auth = {
-    "type": "auth_fail",
-    "payload": {"error": "Сначала пройдите авторизацию"},
-}
-error_user_offline = {
-    "type": "error",
-    "payload": {
-        "error": "Пользователь не в сети"
-    }
-}
+
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
@@ -29,15 +19,22 @@ def verificated_pass(password: str, hash_password: str) -> bool:
     return pwd_context.verify(password, hash_password)
 
 
-async def broadcast(message: str, sender_websocket: WebSocketServerProtocol):
-    """
-    Функция отправки сообщений всем
+async def register_new_user(data: dict, websocket: WebSocketServerProtocol):
+    username = data["payload"]["username"]
+    password = data["payload"]["password"]
 
-    :param message: Сообщение из json
-    :type message: str
-    :param sender_websocket: sender_websocket
-    :type sender_websocket: WebSocketServerProtocol
-    """
+    user_exists = await get_user(username)
+    if user_exists:
+        await websocket.send(json.dumps(error_user_exists))
+        return
+
+    hashed_password = pwd_context.hash(password)
+    await insert_data([{"username": username, "password": hashed_password, "status": statuss.online}], "user")
+    await websocket.send(json.dumps(register_success))
+    print(f"Новый пользователь {username} зарегистрирован.")
+
+
+async def broadcast(message: str, sender_websocket: WebSocketServerProtocol):
     sender_user = ACTIVE_USERS.get(sender_websocket)
 
     if not sender_user:
@@ -52,125 +49,147 @@ async def broadcast(message: str, sender_websocket: WebSocketServerProtocol):
             },
         }
     )
-    tasks = []
-
-    for client_websocket in ACTIVE_USERS:
-        if client_websocket != sender_websocket:
-            task = asyncio.create_task(client_websocket.send(message_to_send))
-            tasks.append(task)
-    if tasks:
-        await asyncio.wait(tasks)
-
-
-async def send_private_message(message: str, sender_websocket: WebSocketServerProtocol, recipient_username: str):
-    sender_username = WEBSOCKET_TO_USER.get(sender_websocket)
-    if not sender_username:
-        return False
     
+    disconnected_clients = []
+    for client_websocket in list(ACTIVE_USERS.keys()):
+        if client_websocket != sender_websocket:
+            try:
+                await client_websocket.send(message_to_send)
+            except ConnectionClosed:
+                disconnected_clients.append(client_websocket)
+    
+    for client_websocket in disconnected_clients:
+        if client_websocket in ACTIVE_USERS:
+            user_to_remove = ACTIVE_USERS.pop(client_websocket)
+            if user_to_remove.username in USER_TO_WEBSOCKET:
+                USER_TO_WEBSOCKET.pop(user_to_remove.username)
+            if client_websocket in WEBSOCKET_TO_USER:
+                WEBSOCKET_TO_USER.pop(client_websocket)
+            print(
+                f"Клиент {user_to_remove.username} отключился во время broadcast. Осталось: {len(ACTIVE_USERS)}"
+            )
+
+
+async def send_private_message(
+    message: str, sender_websocket: WebSocketServerProtocol, recipient_username: str
+):
+    sender_user = ACTIVE_USERS.get(sender_websocket)
+    if not sender_user:
+        return False
+
     recipient_websocket = USER_TO_WEBSOCKET.get(recipient_username)
     if not recipient_websocket:
         error_msg = json.dumps(error_user_offline)
         await sender_websocket.send(error_msg)
         return False
-    
-    private_message_to_recipient = json.dumps({
-        "type": "private_message",
-        "payload":
+
+    private_message_to_recipient = json.dumps(
         {
-            "from": sender_username,
-            "text": message,
-            "is_private": True,
+            "type": "private_message",
+            "payload": {
+                "from": sender_user.username,
+                "text": message,
+                "is_private": True,
+            },
         }
-    })
-    
-    private_message_to_sender = json.dumps({
-        "type": "priavate_message_sent",
-        "payload":
+    )
+
+    private_message_to_sender = json.dumps(
         {
-            "to": recipient_username,
-            "text": message,
-            "is_private": True,
+            "type": "priavate_message_sent",
+            "payload": {
+                "to": recipient_username,
+                "text": message,
+                "is_private": True,
+            },
         }
-    })
+    )
 
     await recipient_websocket.send(private_message_to_recipient)
     await sender_websocket.send(private_message_to_sender)
 
-    print(f"[PRIVATE] {sender_username} -> {recipient_username}: {message}")
-    
+    print(f"[PRIVATE] {sender_user.username} -> {recipient_username}: {message}")
 
-async def authentication(data, websocket: WebSocketServerProtocol) -> bool:
-    """
-    Функция аутетификации
 
-    :param data: Словарь от пользователя с тегом auth
-    :type data: Any
-    :param websocket: websocket
-    :type websocket: WebSocketServerProtocol
-    """
+async def send_online_users_list(websocket: WebSocketServerProtocol):
+    online_users = list(USER_TO_WEBSOCKET.keys())
+    response = {"type": "online_users", "payload": {"users": online_users}}
+    await websocket.send(json.dumps(response))
+
+
+async def authentication(data: dict, websocket: WebSocketServerProtocol) -> User | None:
     if data.get("type") == "auth":
         user = await get_user(data["payload"]["username"])
-        if user != None and verificated_pass(
+        if user is not None and verificated_pass(
             data["payload"]["password"], user.password
         ):
-            WEBSOCKET_TO_USER[websocket] = user.username
-            USER_TO_WEBSOCKET[user.username] = websocket
-            print(
-                f"Пользователь {user.username} подключился всего пользователей {len(ACTIVE_USERS)}"
-            )
+            print(f"Пользователь {user.username} подключился")
             await websocket.send(json.dumps({"type": "auth_success"}))
-            return True
+            return user
         else:
             await websocket.send(json.dumps(error_login_or_password))
-            return False
+            return None
     else:
         await websocket.send(json.dumps(error_first_non_auth))
-        return False
+        return None
 
 
 async def shipping(websocket: WebSocketServerProtocol):
     async for message in websocket:
         data = json.loads(message)
         if data.get("type") == "message":
-            await insert_data(data, "message")
-            await broadcast(message=data["payload"]["text"], sender_websocket=websocket)
-        if data.get("type") == "private_message":
-            #await insert_data(data,"message")
+            sender_user = ACTIVE_USERS.get(websocket)
+            if sender_user:
+                await insert_data(data, "message", username=sender_user.username)
+                await broadcast(message=data["payload"]["text"], sender_websocket=websocket)
+            else:
+                print("Ошибка: Неизвестный пользователь пытается отправить сообщение.")
+        elif data.get("type") == "private_message":
             message = data["payload"]["text"]
             recipient = data["payload"]["to"]
-            await send_private_message(message,websocket,recipient)
+            await send_private_message(message, websocket, recipient)
+        elif data.get("type") == "get_online_users":
+            await send_online_users_list(websocket)
+
 
 async def handler(websocket: WebSocketServerProtocol, path: str):
-    """
-    Функция handler
-
-    :param websocket: Websocket
-    :type websocket: WebSocketServerProtocol
-    :param path: Путь?
-    :type path: str
-    """
     user: User | None = None
-    message = await websocket.recv()
-    data = json.loads(message)
     try:
-        if await authentication(data, websocket) == True:
-            await shipping(websocket)
-        else:
-            count_auth = 0
-            print("Ошибка авторизации повторите попытку")
-            while count_auth != 3:
-                await authentication(data, websocket)
+        message = await websocket.recv()
+        data: dict = json.loads(message)
 
+        if data.get("type") == "auth":
+            user = await authentication(data, websocket)
+            if user:
+                WEBSOCKET_TO_USER[websocket] = user.username
+                USER_TO_WEBSOCKET[user.username] = websocket
+                ACTIVE_USERS[websocket] = user
+                print(
+                    f"Пользователь {user.username} подключился. Всего пользователей: {len(ACTIVE_USERS)}"
+                )
+                await shipping(websocket)
+            else:
+                await websocket.close()
+                return
+        elif data.get("type") == "register":
+            await register_new_user(data, websocket)
+        else:
+            await websocket.send(json.dumps(error_first_non_auth))
+
+    except ConnectionClosed:
+        pass
     finally:
-        if websocket in ACTIVE_USERS:
-            user = ACTIVE_USERS.pop(websocket)
-            print(f"Клиент {user.username} отключился осталось {len(ACTIVE_USERS)}")  # type: ignore
+        if user:
+            if user.username in USER_TO_WEBSOCKET:
+                USER_TO_WEBSOCKET.pop(user.username)
+            if websocket in WEBSOCKET_TO_USER:
+                WEBSOCKET_TO_USER.pop(websocket)
+            if websocket in ACTIVE_USERS:
+                ACTIVE_USERS.pop(websocket)
+            print(f"Клиент {user.username} отключился. Осталось: {len(ACTIVE_USERS)}")
 
 
 async def main():
-    """
-    Основная функция - точка входа в сервеной части
-    """
     host = "0.0.0.0"
     port = 8765
 

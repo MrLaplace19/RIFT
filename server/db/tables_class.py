@@ -12,7 +12,9 @@ class statuss(Enum):
     offline = "offline"
 
 
-int_id = Annotated[uuid.UUID, mapped_column(UUID(as_uuid=True),primary_key=True, default=uuid.uuid4)]
+int_id = Annotated[
+    uuid.UUID, mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+]
 date_create = Annotated[datetime, mapped_column(server_default=func.now())]
 
 
@@ -26,7 +28,7 @@ class User(Base):
     date: Mapped[date_create]
     messages: Mapped[list["Message"]] = relationship(
         back_populates="author"
-    )  # Узнать что это за связь
+    )
 
 
 class Message(Base):
@@ -37,7 +39,7 @@ class Message(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     author: Mapped["User"] = relationship(
         back_populates="messages"
-    )  # Узнать что это за связь
+    )
 
 
 list_tables = {

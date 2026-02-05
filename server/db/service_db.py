@@ -1,11 +1,10 @@
-from .tables_class import User, Message, list_tables
+from .tables_class import User, list_tables
 from .base_class import Base
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from typing import Any
 import os
 
-# Получаем данные для подключения к БД из переменных окружения
 DB_USER = os.getenv("POSTGRES_USER", "AD")
 DB_PASS = os.getenv("POSTGRES_PASSWORD", "123")
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -34,10 +33,10 @@ async def get_all_from_table(table_name: str) -> list[Any]:
         query = select(table)
         result = await session.execute(query)
         elements = result.scalars().all()
-        return elements  # type: ignore
+        return elements
 
 
-async def insert_data(information: Any, table_name: str):
+async def insert_data(information: Any, table_name: str, username: str | None = None):
     user_table = list_tables.get(table_name)
 
     if user_table is None:
@@ -55,22 +54,17 @@ async def insert_data(information: Any, table_name: str):
 
             elif table_name == "message":
                 payload = information.get("payload", {})
-                login = payload.get("username")
                 text = payload.get("text")
 
-                if not all([login, text]):
+                if not all([username, text]):
                     raise ValueError("Отсутствуют обязательные поля")
 
-                # Получаем пользователя в той же сессии
-                from sqlalchemy import select
-                from sqlalchemy.orm import selectinload
-
-                stmt = select(User).where(User.username == login)
+                stmt = select(User).where(User.username == username)
                 result = await session.execute(stmt)
                 user = result.scalar_one_or_none()
 
                 if not user:
-                    raise ValueError(f"Пользователь {login} не найден")
+                    raise ValueError(f"Пользователь {username} не найден")
 
                 message_data = {
                     "user_id": user.id,
