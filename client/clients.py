@@ -3,11 +3,18 @@ import asyncio
 import websockets
 import json
 import getpass
+from src.User import User
 
 
-async def receive_message(websocket):
+async def receive_message(user_websocket):
+    """
+    Функция приёма websocket`а
+
+    :param user_websocket: Websocket
+    :type user_websocket: WebSocketServerProtocol
+    """
     try:
-        async for message in websocket:
+        async for message in user_websocket:
             data = json.loads(message)
             if data.get("type") == "new_message":
                 username = data["payload"]["username"]
@@ -21,7 +28,7 @@ async def receive_message(websocket):
                 recipient = data["payload"]["to"]
                 text = data["payload"]["text"]
                 print(f"[PM для {recipient}] : {text}")
-            elif data.get("type") == "online_users":
+            elif data.get("type") == "online_users":  # New block
                 users = data["payload"]["users"]
                 print("\n--- Online Users ---")
                 for user_online in users:
@@ -33,7 +40,13 @@ async def receive_message(websocket):
         print("Соединение разорвано")
 
 
-async def send_message(websocket, username: str):
+async def send_message(user: User):
+    """
+    Функция отправки websocket
+
+    :param user: Объект пользователя
+    :type user: User
+    """
     while True:
         try:
             message = await asyncio.to_thread(input, "")
@@ -41,42 +54,33 @@ async def send_message(websocket, username: str):
                 print("Выход из чата")
                 break
             elif message.lower() == "/users":
-                message_to_send = json.dumps(
-                    {"type": "get_online_users", "payload": {}}
-                )
-                await websocket.send(message_to_send)
+                await user.get_list_online_users()
                 continue
             elif message.startswith("/pm "):
                 parts = message[4:].split(" ", 1)
                 if len(parts) == 2:
                     recipient, text = parts
-                    message_to_send = json.dumps(
-                        {
-                            "type": "private_message",
-                            "payload": {
-                                "to": recipient,
-                                "text": text,
-                            },
-                        }
-                    )
-                    await websocket.send(message_to_send)
+                    await user.private_message(recipient, text)
                 else:
                     print("Неверный формат")
                     continue
-            message_to_send = json.dumps(
-                {"type": "message", "payload": {"text": message}}
-            )
-            await websocket.send(message_to_send)
+            await user.message_in_general_chat(message)
         except (KeyboardInterrupt, EOFError):
             print("\nВыход из чата")
             break
 
 
-async def connect(websocket, username: str):
+async def connect(user: User):
+    """
+    Функция подключения и отправки сообщений
+
+    :param user: Объект пользователя
+    :type user: User
+    """
     print("Аутентификация успешна. Подключение к чату.")
 
-    receive_task = asyncio.create_task(receive_message(websocket))
-    send_task = asyncio.create_task(send_message(websocket, username))
+    receive_task = asyncio.create_task(receive_message(user.websocket))
+    send_task = asyncio.create_task(send_message(user))
 
     done, pending = await asyncio.wait(
         [receive_task, send_task],
@@ -87,6 +91,11 @@ async def connect(websocket, username: str):
 
 
 async def main():
+    """
+    Основная функция - точка входа
+    inputs: Принимает login и password
+    const: URL сервера websocket
+    """
     parser = argparse.ArgumentParser(description="WebSocket Chat Client")
     parser.add_argument("--host", default="localhost", help="WebSocket server host")
     parser.add_argument("--port", type=int, default=8765, help="WebSocket server port")
@@ -100,29 +109,16 @@ async def main():
     action = input("Вы хотите (l)og in или (r)egister? ").lower()
 
     if action == "r":
-        register_data = json.dumps(
-            {
-                "type": "register",
-                "payload": {
-                    "username": username,
-                    "password": password,
-                },
-            }
-        )
         try:
             async with websockets.connect(url) as websocket:
+                user = User(websocket)
                 print(f"Попытка регистрации на {url}...")
-                await websocket.send(register_data)
-                response_str = await websocket.recv()
-                response = json.loads(response_str)
-                if response.get("type") == "register_success":
-                    print("Регистрация успешна. Теперь вы можете войти.")
+                success, message = await user.registration(username, password)
+                if success:
+                    print(message)
                 else:
-                    error_message = response.get("payload", {}).get(
-                        "error", "Ошибка регистрации"
-                    )
-                    print("Ошибка регистрации:", error_message)
-            return
+                    print("Ошибка регистрации:", message)
+            return  # Exit after registration attempt
         except websockets.exceptions.ConnectionClosed:
             print("Соединение с сервером закрыто.")
         except ConnectionRefusedError:
@@ -130,29 +126,17 @@ async def main():
         return
 
     elif action == "l":
-        auth_data = json.dumps(
-            {
-                "type": "auth",
-                "payload": {
-                    "username": username,
-                    "password": password,
-                },
-            }
-        )
         try:
             async with websockets.connect(url) as websocket:
+                user = User(websocket)
                 print(f"Подключение к чату {url}")
-                await websocket.send(auth_data)
-                server_str = await websocket.recv()
-                response = json.loads(server_str)
+                success, message = await user.sign_in(username, password)
 
-                if response.get("type") == "auth_success":
-                    await connect(websocket, username)
+                if success:
+                    user.websocket = websocket
+                    await connect(user)
                 else:
-                    error_message = response.get("payload", {}).get(
-                        "error", "Неверный логин или пароль"
-                    )
-                    print("Не удалось войти: ", error_message)
+                    print("Не удалось войти: ", message)
         except websockets.exceptions.ConnectionClosed:
             print("Соединение с сервером закрыто.")
         except ConnectionRefusedError:

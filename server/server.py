@@ -1,5 +1,5 @@
 import asyncio
-from websockets.server import serve, WebSocketServerProtocol
+from websockets.server import serve, WebSocketServerProtocol # type: ignore
 from websockets.exceptions import ConnectionClosed
 import json
 from passlib.context import CryptContext
