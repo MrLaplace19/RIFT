@@ -1,12 +1,19 @@
 import asyncio
-from websockets.server import serve, WebSocketServerProtocol # type: ignore
+from websockets.server import serve, WebSocketServerProtocol  # type: ignore
 from websockets.exceptions import ConnectionClosed
 import json
 from passlib.context import CryptContext
-#---------------------------------------------
+
+# ---------------------------------------------
 from db.service_db import get_user, insert_data
 from db.tables_class import User, statuss
-from erorrs_messages.erorrs import error_user_exists, register_success, error_user_offline, error_login_or_password, error_first_non_auth
+from erorrs_messages.erorrs import (
+    error_user_exists,
+    register_success,
+    error_user_offline,
+    error_login_or_password,
+    error_first_non_auth,
+)
 
 ACTIVE_USERS = {}
 WEBSOCKET_TO_USER = {}
@@ -29,7 +36,10 @@ async def register_new_user(data: dict, websocket: WebSocketServerProtocol):
         return
 
     hashed_password = pwd_context.hash(password)
-    await insert_data([{"username": username, "password": hashed_password, "status": statuss.online}], "user")
+    await insert_data(
+        [{"username": username, "password": hashed_password, "status": statuss.online}],
+        "user",
+    )
     await websocket.send(json.dumps(register_success))
     print(f"Новый пользователь {username} зарегистрирован.")
 
@@ -49,7 +59,7 @@ async def broadcast(message: str, sender_websocket: WebSocketServerProtocol):
             },
         }
     )
-    
+
     disconnected_clients = []
     for client_websocket in list(ACTIVE_USERS.keys()):
         if client_websocket != sender_websocket:
@@ -57,7 +67,7 @@ async def broadcast(message: str, sender_websocket: WebSocketServerProtocol):
                 await client_websocket.send(message_to_send)
             except ConnectionClosed:
                 disconnected_clients.append(client_websocket)
-    
+
     for client_websocket in disconnected_clients:
         if client_websocket in ACTIVE_USERS:
             user_to_remove = ACTIVE_USERS.pop(client_websocket)
@@ -141,7 +151,9 @@ async def shipping(websocket: WebSocketServerProtocol):
             sender_user = ACTIVE_USERS.get(websocket)
             if sender_user:
                 await insert_data(data, "message", username=sender_user.username)
-                await broadcast(message=data["payload"]["text"], sender_websocket=websocket)
+                await broadcast(
+                    message=data["payload"]["text"], sender_websocket=websocket
+                )
             else:
                 print("Ошибка: Неизвестный пользователь пытается отправить сообщение.")
         elif data.get("type") == "private_message":

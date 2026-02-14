@@ -57,13 +57,10 @@ async def send_message(user: User):
                 await user.get_list_online_users()
                 continue
             elif message.startswith("/pm "):
-                parts = message[4:].split(" ", 1)
-                if len(parts) == 2:
-                    recipient, text = parts
-                    await user.private_message(recipient, text)
-                else:
-                    print("Неверный формат")
-                    continue
+                await user.private_message(message)
+            else:
+                print("Неверный формат")
+                continue
             await user.message_in_general_chat(message)
         except (KeyboardInterrupt, EOFError):
             print("\nВыход из чата")

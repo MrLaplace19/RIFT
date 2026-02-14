@@ -26,9 +26,7 @@ class User(Base):
     friend_list: Mapped[str] = mapped_column(String, nullable=True)
     status: Mapped[statuss]
     date: Mapped[date_create]
-    messages: Mapped[list["Message"]] = relationship(
-        back_populates="author"
-    )
+    messages: Mapped[list["Message"]] = relationship(back_populates="author")
 
 
 class Message(Base):
@@ -37,9 +35,7 @@ class Message(Base):
     content: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[date_create]
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
-    author: Mapped["User"] = relationship(
-        back_populates="messages"
-    )
+    author: Mapped["User"] = relationship(back_populates="messages")
 
 
 list_tables = {
