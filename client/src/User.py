@@ -38,7 +38,10 @@ class User:
         else:
             return False, "Ошибка регистрации"
 
-    async def sign_in(self, username: str, password: str) -> tuple[bool, str]:
+    async def sign_in(self, username: str | None, password: str | None) -> tuple[bool, str]:
+        if (username == None) and (password == None):
+            username = self.username
+            password = self.password
         auth_data = create_json(1, username, password, None)
         await self.websocket.send(auth_data)
         server_str = await self.websocket.recv()
