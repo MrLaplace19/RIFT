@@ -1,6 +1,6 @@
 import json
 from websockets.client import WebSocketClientProtocol  # type: ignore
-from samples.json_samples import create_json
+from protocol import create_json
 
 
 class User:
@@ -16,8 +16,8 @@ class User:
         self.password: str | None = password
         self.role: str | None = role
 
-    async def message_in_general_chat(self, message: str) -> None:
-        message_to_send = create_json(2, None, None, message)
+    async def send_message_room(self, message: str, room: str) -> None:
+        message_to_send = create_json(2, None, None, message, room)
         await self.websocket.send(message_to_send)
 
     async def private_message(self, message: str) -> None:

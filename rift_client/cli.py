@@ -1,11 +1,12 @@
 import argparse
 import asyncio
+from traceback import print_tb
 import websockets
 import json
 import getpass
 #-------------------------------------------
-from src.User import User
-from src.configuration.config import config, create_settings, settings_file
+from api import User
+from config import config, create_settings, settings_file
 
 
 async def receive_message(user_websocket):
@@ -30,7 +31,7 @@ async def receive_message(user_websocket):
                 recipient = data["payload"]["to"]
                 text = data["payload"]["text"]
                 print(f"[PM для {recipient}] : {text}")
-            elif data.get("type") == "online_users":  # New block
+            elif data.get("type") == "online_users": 
                 users = data["payload"]["users"]
                 print("\n--- Online Users ---")
                 for user_online in users:
@@ -49,7 +50,8 @@ async def send_message(user: User):
     :param user: Объект пользователя
     :type user: User
     """
-    while True:
+    current_room = "general"
+    while True:        
         try:
             message = await asyncio.to_thread(input, "")
             if message.lower() == "exit":
@@ -60,10 +62,10 @@ async def send_message(user: User):
                 continue
             elif message.startswith("/pm "):
                 await user.private_message(message)
-            else:
-                print("Неверный формат")
                 continue
-            await user.message_in_general_chat(message)
+            else:
+                await user.send_message_room(message, current_room)
+                continue
         except (KeyboardInterrupt, EOFError):
             print("\nВыход из чата")
             break
@@ -140,7 +142,7 @@ async def main():
                         print(message)
                     else:
                         print("Ошибка регистрации:", message)
-                return  # Exit after registration attempt
+                return
             except websockets.exceptions.ConnectionClosed:
                 print("Соединение с сервером закрыто.")
             except ConnectionRefusedError:
@@ -155,6 +157,10 @@ async def main():
                     success, message = await user.sign_in(username, password)
 
                     if success:
+                        if not settings_file.exists():
+                            set = input("Хотите сохранить данные для автоматического входа (Y) или (N)")
+                            if (set.lower() == "y"):
+                                create_settings(username, password)
                         user.websocket = websocket
                         await connect(user)
                     else:
@@ -167,7 +173,3 @@ async def main():
             print(
                 "Неверный выбор. Пожалуйста, выберите 'l' для входа или 'r' для регистрации."
             )
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

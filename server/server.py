@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 
 # ---------------------------------------------
 from db.service_db import get_user, insert_data
-from db.tables_class import User, statuss
+from db.tables_class import User, Statuss
 from erorrs_messages.erorrs import (
     error_user_exists,
     register_success,
@@ -15,7 +15,10 @@ from erorrs_messages.erorrs import (
     error_first_non_auth,
 )
 
-ACTIVE_USERS = {}
+ROOMS = {
+    "general": set()
+}
+WEBSOCKET_TO_USER_OBJ = {}
 WEBSOCKET_TO_USER = {}
 USER_TO_WEBSOCKET = {}
 
@@ -37,53 +40,44 @@ async def register_new_user(data: dict, websocket: WebSocketServerProtocol):
 
     hashed_password = pwd_context.hash(password)
     await insert_data(
-        [{"username": username, "password": hashed_password, "status": statuss.online}],
+        [{"username": username, "password": hashed_password, "status": Statuss.online}],
         "user",
     )
     await websocket.send(json.dumps(register_success))
     print(f"Новый пользователь {username} зарегистрирован.")
 
 
-async def broadcast(message: str, sender_websocket: WebSocketServerProtocol):
-    sender_user = ACTIVE_USERS.get(sender_websocket)
+async def broadcast_to_room(room_name: str,message: str, sender_websocket: WebSocketServerProtocol):
+    
+
+    sender_user = WEBSOCKET_TO_USER_OBJ[sender_websocket]
 
     if not sender_user:
         return
-
+    
+    if room_name not in ROOMS:
+        return
     message_to_send = json.dumps(
         {
             "type": "new_message",
             "payload": {
+                "room": room_name,
                 "username": sender_user.username,
                 "text": message,
             },
         }
     )
 
-    disconnected_clients = []
-    for client_websocket in list(ACTIVE_USERS.keys()):
+    for client_websocket in ROOMS[room_name]:
         if client_websocket != sender_websocket:
-            try:
-                await client_websocket.send(message_to_send)
-            except ConnectionClosed:
-                disconnected_clients.append(client_websocket)
-
-    for client_websocket in disconnected_clients:
-        if client_websocket in ACTIVE_USERS:
-            user_to_remove = ACTIVE_USERS.pop(client_websocket)
-            if user_to_remove.username in USER_TO_WEBSOCKET:
-                USER_TO_WEBSOCKET.pop(user_to_remove.username)
-            if client_websocket in WEBSOCKET_TO_USER:
-                WEBSOCKET_TO_USER.pop(client_websocket)
-            print(
-                f"Клиент {user_to_remove.username} отключился во время broadcast. Осталось: {len(ACTIVE_USERS)}"
-            )
+            await client_websocket.send(message)
+            
 
 
 async def send_private_message(
     message: str, sender_websocket: WebSocketServerProtocol, recipient_username: str
 ):
-    sender_user = ACTIVE_USERS.get(sender_websocket)
+    sender_user = WEBSOCKET_TO_USER_OBJ.get(sender_websocket)
     if not sender_user:
         return False
 
@@ -145,14 +139,17 @@ async def authentication(data: dict, websocket: WebSocketServerProtocol) -> User
 
 
 async def shipping(websocket: WebSocketServerProtocol):
+
     async for message in websocket:
         data = json.loads(message)
-        if data.get("type") == "message":
-            sender_user = ACTIVE_USERS.get(websocket)
+        if data.get("type") == "room_message":
+            sender_user = WEBSOCKET_TO_USER_OBJ.get(websocket)
             if sender_user:
-                await insert_data(data, "message", username=sender_user.username)
-                await broadcast(
-                    message=data["payload"]["text"], sender_websocket=websocket
+                #await insert_data(data, "message", username=sender_user.username)
+                await broadcast_to_room(
+                    message=data["payload"]["text"], 
+                    sender_websocket=websocket,
+                    room_name=data["payload"]["room"]
                 )
             else:
                 print("Ошибка: Неизвестный пользователь пытается отправить сообщение.")
@@ -173,11 +170,12 @@ async def handler(websocket: WebSocketServerProtocol, path: str):
         if data.get("type") == "auth":
             user = await authentication(data, websocket)
             if user:
+                WEBSOCKET_TO_USER_OBJ[websocket] = user
                 WEBSOCKET_TO_USER[websocket] = user.username
                 USER_TO_WEBSOCKET[user.username] = websocket
-                ACTIVE_USERS[websocket] = user
+                ROOMS["general"].add(websocket) 
                 print(
-                    f"Пользователь {user.username} подключился. Всего пользователей: {len(ACTIVE_USERS)}"
+                    f"Пользователь {user.username} подключился. Всего пользователей: {len(ROOMS['general'])}"
                 )
                 await shipping(websocket)
             else:
@@ -196,9 +194,11 @@ async def handler(websocket: WebSocketServerProtocol, path: str):
                 USER_TO_WEBSOCKET.pop(user.username)
             if websocket in WEBSOCKET_TO_USER:
                 WEBSOCKET_TO_USER.pop(websocket)
-            if websocket in ACTIVE_USERS:
-                ACTIVE_USERS.pop(websocket)
-            print(f"Клиент {user.username} отключился. Осталось: {len(ACTIVE_USERS)}")
+            if websocket in WEBSOCKET_TO_USER_OBJ:
+                WEBSOCKET_TO_USER_OBJ.pop(websocket)
+            for room_set in ROOMS.values():
+                room_set.discard(websocket)
+            print(f"Клиент {user.username} отключился. Осталось: {len(ROOMS['general'])}")
 
 
 async def main():

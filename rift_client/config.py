@@ -1,22 +1,19 @@
 import json
 from pathlib import Path
-from passlib.context import CryptContext
 
 settings_save = {
     "type": "settings",
     "payload": {
         "username": "",
-        "password": "", # Пароль сразу hash
+        "password": "", 
     }
 }
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 settings_file = Path.home() / ".settings.json"
 
 def create_settings(username: str, password: str) -> None:
-    hashed_password = pwd_context.hash(password)
     settings_save["payload"]["username"] = username
-    settings_save["payload"]["password"] = hashed_password
+    settings_save["payload"]["password"] = password
     with open(settings_file, "w", encoding='utf-8') as f:
         json.dump(settings_save, f)
     
