@@ -1,7 +1,13 @@
 import json
 
 
-def create_json(number: int, username: str | None, password: str | None, message: str | None,room: str | None = "general"):
+def create_json(
+    number: int,
+    username: str | None,
+    password: str | None,
+    message: str | None,
+    room: str | None = "general",
+):
     payload = ""
     if number == 1:  # Json авториризация
         payload = json.dumps(
@@ -14,10 +20,12 @@ def create_json(number: int, username: str | None, password: str | None, message
             }
         )
     if number == 2:  # Json сообщзения в общий чат
-        payload = json.dumps({"type": "room_message", "payload": {"room": room, "text": message}})
+        payload = json.dumps(
+            {"type": "room_message", "payload": {"room": room, "text": message}}
+        )
 
     if number == 3:  # Json сообщение приватное
-        if message != None:
+        if message is not None:
             parts = message[4:].split(" ", 1)
             if len(parts) == 2:
                 recipient, text = parts

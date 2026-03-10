@@ -1,12 +1,12 @@
 import argparse
 import asyncio
-from traceback import print_tb
 import websockets
 import json
 import getpass
-#-------------------------------------------
-from api import User
-from config import config, create_settings, settings_file
+
+# -------------------------------------------
+from .api import User
+from .config import config, create_settings, settings_file
 
 
 async def receive_message(user_websocket):
@@ -31,7 +31,7 @@ async def receive_message(user_websocket):
                 recipient = data["payload"]["to"]
                 text = data["payload"]["text"]
                 print(f"[PM для {recipient}] : {text}")
-            elif data.get("type") == "online_users": 
+            elif data.get("type") == "online_users":
                 users = data["payload"]["users"]
                 print("\n--- Online Users ---")
                 for user_online in users:
@@ -51,7 +51,7 @@ async def send_message(user: User):
     :type user: User
     """
     current_room = "general"
-    while True:        
+    while True:
         try:
             message = await asyncio.to_thread(input, "")
             if message.lower() == "exit":
@@ -90,12 +90,67 @@ async def connect(user: User):
     for task in pending:
         task.cancel()
 
+
 def used_settings():
     if not settings_file.exists():
-        print("Отсутсвует файл настроек, авторизмруйтесь и создайте файл в главном меню")
-    
+        print(
+            "Отсутсвует файл настроек, авторизмруйтесь и создайте файл в главном меню"
+        )
+
     settings = config()
     return settings
+
+async def interactive_login_or_register(url: str):
+    username = input("Введите свой логин: ")
+    password = getpass.getpass("Введите свой пароль: ")
+
+    action = input("Вы хотите (l)og in или (r)egister? ").lower()
+
+    if action == "r":
+        try:
+            async with websockets.connect(url) as websocket:
+                user = User(websocket)
+                print(f"Попытка регистрации на {url}...")
+                success, message = await user.registration(username, password)
+                if success:
+                    print(message)
+                else:
+                    print("Ошибка регистрации:", message)
+            return
+        except websockets.exceptions.ConnectionClosed:
+            print("Соединение с сервером закрыто.")
+        except ConnectionRefusedError:
+            print("Не удалось подключиться к серверу.")
+        return
+    
+    elif action == "l":
+            try:
+                async with websockets.connect(url) as websocket:
+                    user = User(websocket)
+                    print(f"Подключение к чату {url}")
+                    success, message = await user.sign_in(username, password)
+
+                    if success:
+                        if not settings_file.exists():
+                            set = input(
+                                "Хотите сохранить данные для автоматического входа (Y) или (N)"
+                            )
+                            if set.lower() == "y":
+                                create_settings(username, password)
+                        user.websocket = websocket
+                        await connect(user)
+                    else:
+                        print("Не удалось войти: ", message)
+                        await interactive_login_or_register(url)
+            except websockets.exceptions.ConnectionClosed:
+                print("Соединение с сервером закрыто.")
+            except ConnectionRefusedError:
+                print("Не удалось подключиться к серверу.")
+    else:
+        print(
+            "Неверный выбор. Пожалуйста, выберите 'l' для входа или 'r' для регистрации."
+        )
+
 
 async def main():
     """
@@ -112,64 +167,25 @@ async def main():
     if settings_file.exists():
         settings = used_settings()
         try:
-                async with websockets.connect(url) as websocket:
-                    user = User(websocket=websocket, username=settings['payload']['username'], password=settings['payload']['password'])
-                    print(f"Подключение к чату {url}")
-                    success, message = await user.sign_in(None,None)
+            async with websockets.connect(url) as websocket:
+                user = User(
+                    websocket=websocket,
+                    username=settings["payload"]["username"],
+                    password=settings["payload"]["password"],
+                )
+                print(f"Подключение к чату {url}")
+                success, message = await user.sign_in(None, None)
 
-                    if success:
-                        user.websocket = websocket
-                        await connect(user)
-                    else:
-                        print("Не удалось войти: ", message)
+                if success:
+                    user.websocket = websocket
+                    await connect(user)
+                else:
+                    print("Не удалось войти: ", message)
         except websockets.exceptions.ConnectionClosed:
             print("Соединение с сервером закрыто.")
+            await interactive_login_or_register(url)
         except ConnectionRefusedError:
             print("Не удалось подключиться к серверу.")
     else:
-        username = input("Введите свой логин: ")
-        password = getpass.getpass("Введите свой пароль: ")
+        await interactive_login_or_register(url)
 
-        action = input("Вы хотите (l)og in или (r)egister? ").lower()
-
-        if action == "r":
-            try:
-                async with websockets.connect(url) as websocket:
-                    user = User(websocket)
-                    print(f"Попытка регистрации на {url}...")
-                    success, message = await user.registration(username, password)
-                    if success:
-                        print(message)
-                    else:
-                        print("Ошибка регистрации:", message)
-                return
-            except websockets.exceptions.ConnectionClosed:
-                print("Соединение с сервером закрыто.")
-            except ConnectionRefusedError:
-                print("Не удалось подключиться к серверу.")
-            return
-
-        elif action == "l":
-            try:
-                async with websockets.connect(url) as websocket:
-                    user = User(websocket)
-                    print(f"Подключение к чату {url}")
-                    success, message = await user.sign_in(username, password)
-
-                    if success:
-                        if not settings_file.exists():
-                            set = input("Хотите сохранить данные для автоматического входа (Y) или (N)")
-                            if (set.lower() == "y"):
-                                create_settings(username, password)
-                        user.websocket = websocket
-                        await connect(user)
-                    else:
-                        print("Не удалось войти: ", message)
-            except websockets.exceptions.ConnectionClosed:
-                print("Соединение с сервером закрыто.")
-            except ConnectionRefusedError:
-                print("Не удалось подключиться к серверу.")
-        else:
-            print(
-                "Неверный выбор. Пожалуйста, выберите 'l' для входа или 'r' для регистрации."
-            )

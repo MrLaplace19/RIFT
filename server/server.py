@@ -7,7 +7,7 @@ from passlib.context import CryptContext
 # ---------------------------------------------
 from db.service_db import get_user, insert_data
 from db.tables_class import User, Statuss
-from erorrs_messages.erorrs import (
+from errors_messages.errors import (
     error_user_exists,
     register_success,
     error_user_offline,
@@ -15,13 +15,10 @@ from erorrs_messages.erorrs import (
     error_first_non_auth,
 )
 
-ROOMS = {
-    "general": set()
-}
+ROOMS = {"general": set()}
 WEBSOCKET_TO_USER_OBJ = {}
-WEBSOCKET_TO_USER = {}
 USER_TO_WEBSOCKET = {}
-
+# Улучшить
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
@@ -47,31 +44,27 @@ async def register_new_user(data: dict, websocket: WebSocketServerProtocol):
     print(f"Новый пользователь {username} зарегистрирован.")
 
 
-async def broadcast_to_room(room_name: str,message: str, sender_websocket: WebSocketServerProtocol):
-    
-
-    sender_user = WEBSOCKET_TO_USER_OBJ[sender_websocket]
+async def broadcast_to_room(
+    room_name: str, message: str, sender_websocket: WebSocketServerProtocol
+):
+    sender_user = WEBSOCKET_TO_USER_OBJ.get(sender_websocket)
 
     if not sender_user:
         return
-    
+
     if room_name not in ROOMS:
         return
-    message_to_send = json.dumps(
+
+    message_payload = json.dumps(
         {
             "type": "new_message",
-            "payload": {
-                "room": room_name,
-                "username": sender_user.username,
-                "text": message,
-            },
+            "payload": {"username": sender_user.username, "text": message},
         }
     )
 
     for client_websocket in ROOMS[room_name]:
         if client_websocket != sender_websocket:
-            await client_websocket.send(message)
-            
+            await client_websocket.send(message_payload)
 
 
 async def send_private_message(
@@ -100,7 +93,7 @@ async def send_private_message(
 
     private_message_to_sender = json.dumps(
         {
-            "type": "priavate_message_sent",
+            "type": "private_message_sent",
             "payload": {
                 "to": recipient_username,
                 "text": message,
@@ -139,17 +132,16 @@ async def authentication(data: dict, websocket: WebSocketServerProtocol) -> User
 
 
 async def shipping(websocket: WebSocketServerProtocol):
-
     async for message in websocket:
         data = json.loads(message)
         if data.get("type") == "room_message":
             sender_user = WEBSOCKET_TO_USER_OBJ.get(websocket)
             if sender_user:
-                #await insert_data(data, "message", username=sender_user.username)
+                # await insert_data(data, "message", username=sender_user.username)
                 await broadcast_to_room(
-                    message=data["payload"]["text"], 
+                    message=data["payload"]["text"],
                     sender_websocket=websocket,
-                    room_name=data["payload"]["room"]
+                    room_name=data["payload"]["room"],
                 )
             else:
                 print("Ошибка: Неизвестный пользователь пытается отправить сообщение.")
@@ -171,9 +163,8 @@ async def handler(websocket: WebSocketServerProtocol, path: str):
             user = await authentication(data, websocket)
             if user:
                 WEBSOCKET_TO_USER_OBJ[websocket] = user
-                WEBSOCKET_TO_USER[websocket] = user.username
                 USER_TO_WEBSOCKET[user.username] = websocket
-                ROOMS["general"].add(websocket) 
+                ROOMS["general"].add(websocket)
                 print(
                     f"Пользователь {user.username} подключился. Всего пользователей: {len(ROOMS['general'])}"
                 )
@@ -192,13 +183,13 @@ async def handler(websocket: WebSocketServerProtocol, path: str):
         if user:
             if user.username in USER_TO_WEBSOCKET:
                 USER_TO_WEBSOCKET.pop(user.username)
-            if websocket in WEBSOCKET_TO_USER:
-                WEBSOCKET_TO_USER.pop(websocket)
             if websocket in WEBSOCKET_TO_USER_OBJ:
                 WEBSOCKET_TO_USER_OBJ.pop(websocket)
             for room_set in ROOMS.values():
                 room_set.discard(websocket)
-            print(f"Клиент {user.username} отключился. Осталось: {len(ROOMS['general'])}")
+            print(
+                f"Клиент {user.username} отключился. Осталось: {len(ROOMS['general'])}"
+            )
 
 
 async def main():

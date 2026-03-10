@@ -1,6 +1,6 @@
 import json
 from websockets.client import WebSocketClientProtocol  # type: ignore
-from protocol import create_json
+from .protocol import create_json
 
 
 class User:
@@ -38,8 +38,10 @@ class User:
         else:
             return False, "Ошибка регистрации"
 
-    async def sign_in(self, username: str | None, password: str | None) -> tuple[bool, str]:
-        if (username == None) and (password == None):
+    async def sign_in(
+        self, username: str | None, password: str | None
+    ) -> tuple[bool, str]:
+        if (username is None) and (password is None):
             username = self.username
             password = self.password
         auth_data = create_json(1, username, password, None)
