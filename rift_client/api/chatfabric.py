@@ -1,18 +1,10 @@
 import json
 from websockets.client import WebSocketClientProtocol  # type: ignore
-from dataclasses import dataclass
+from ..models.user import User
 from .message import MessageManager
 
 
-@dataclass
-class User:
-
-    username: str
-    password: str
-    role: str | None = None
-
-
-class ChatManager:
+class ChatFabric:
 
     def __init__(self, websocket: WebSocketClientProtocol) -> None:
         self.websocket = websocket
@@ -47,7 +39,7 @@ class ChatManager:
         message_to_send = self.message_manager.create_chat_message(text=message, room=room)
         await self.websocket.send(message_to_send)
 
-    async def private_message(self, recipient: str, text: str) -> None:
+    async def send_private_message(self, recipient: str, text: str) -> None:
         if not self.current_user:
             return
         message_to_send = self.message_manager.create_private_message(recipient, text)

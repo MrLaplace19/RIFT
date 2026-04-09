@@ -1,0 +1,147 @@
+/* Основной контейнер */
+Screen {
+    background: $surface;
+}
+
+/* Главный контейнер с 3 колонками */
+#main-container {
+    height: 1fr;
+    layout: horizontal;
+}
+
+/* Левая панель - Беседы */
+#rooms-panel {
+    width: 25;
+    height: 1fr;
+    background: $panel;
+    border-right: tall $primary;
+}
+
+#rooms-title {
+    dock: top;
+    height: 3;
+    content-align: center middle;
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+#rooms-list {
+    height: 1fr;
+    background: $panel;
+    padding: 1;
+}
+
+/* Центральная панель - Чат */
+#chat-panel {
+    width: 1fr;
+    height: 1fr;
+    layout: vertical;
+}
+
+#chat-header {
+    dock: top;
+    height: 3;
+    background: $primary-darken-1;
+    content-align: center middle;
+    text-style: bold;
+    color: $text;
+}
+
+#chat-log {
+    height: 1fr;
+    background: $surface;
+    border: solid $primary;
+    padding: 1;
+    scrollbar-gutter: stable;
+}
+
+/* Правая панель - Друзья/Пользователи */
+#users-panel {
+    width: 25;
+    height: 1fr;
+    background: $panel;
+    border-left: tall $primary;
+}
+
+#users-title {
+    dock: top;
+    height: 3;
+    content-align: center middle;
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+#user-list {
+    height: 1fr;
+    background: $panel;
+    padding: 1;
+}
+
+.user-item {
+    padding: 0 1;
+    color: $text;
+}
+
+.user-item:hover {
+    background: $primary-darken-2;
+}
+
+.room-item {
+    padding: 0 1;
+    color: $text;
+}
+
+.room-item:hover {
+    background: $primary-darken-2;
+}
+
+.room-item-active {
+    background: $primary-darken-1;
+    text-style: bold;
+}
+
+/* Поле ввода внизу */
+#chat-input {
+    dock: bottom;
+    height: 3;
+    border: tall $primary;
+    background: $surface;
+}
+
+#chat-input:focus {
+    border: tall $accent;
+}
+
+/* Стили для сообщений */
+.message-own {
+    color: $accent;
+}
+
+.message-other {
+    color: $warning;
+}
+
+.message-private {
+    color: $error;
+}
+
+.message-system {
+    color: $text-muted;
+    text-style: italic;
+}
+
+/* Footer */
+Footer {
+    background: $primary-darken-2;
+}
+
+Footer > .footer--key {
+    background: $primary;
+    color: $text;
+}
+
+Footer > .footer--description {
+    color: $text-muted;
+}

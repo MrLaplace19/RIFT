@@ -1,0 +1,13 @@
+
+  rift_client/
+  ├── view/           # Presentation Layer (UI)
+  │   └── tui.py      # Textual интерфейс
+  ├── logic/          # Business Logic Layer
+  │   ├── chat.py     # Логика чата (отправка, получение)
+  │   └── auth.py     # Логика авторизации
+  ├── api/            # Data Access Layer
+  │   ├── websocket.py  # WebSocket клиент
+  │   └── protocol.py   # Протокол сообщений
+  └── models/         # Domain Models
+      ├── user.py
+      └── message.py
